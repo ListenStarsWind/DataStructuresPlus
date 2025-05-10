@@ -1,0 +1,45 @@
+# 基于 Google 风格作为默认模板，后续自定义项会覆盖它
+BasedOnStyle: Google
+
+# 缩进宽度：每级使用 4 个空格（比 Google 默认的 2 更易读）
+IndentWidth: 4
+
+# 单行最大列数为 100，超过将自动换行
+ColumnLimit: 100
+
+# 启用自定义的大括号换行控制
+BreakBeforeBraces: Custom
+
+BraceWrapping:
+  # class/struct/enum 定义后是否换行写 {，设为 true 使其风格一致（尤其在有继承时更清晰）
+  AfterClass: true
+  AfterStruct: true
+  AfterEnum: true
+
+  # 函数定义后是否换行写 {，设为 true，使函数体结构清晰
+  AfterFunction: true
+
+  # if / for / while 等控制结构后是否换行写 {，Allman 风格，提升可读性
+  AfterControlStatement: true
+
+  # catch 和 else 前是否换行，保持风格一致
+  BeforeCatch: true
+  BeforeElse: true
+
+  # 是否缩进大括号自身（不是括号里面的内容），设为 false 保持对齐
+  IndentBraces: false
+
+# 禁止 if 单行写法，强制加大括号换行（即使只有一行）
+AllowShortIfStatementsOnASingleLine: false
+
+# 允许超短函数体（如只有 return）写在一行，节省空间
+AllowShortFunctionsOnASingleLine: Inline
+
+# 控制 if / for / while 等控制语句后是否加空格（函数调用不加）
+# 示例: if (x) ✅   func(x) ✅
+SpaceBeforeParens: ControlStatements
+
+# 括号内是否加空格，设为 false 表示不加（推荐）
+# 示例: if (x == 1) ✅ 而不是 if ( x == 1 ) ❌
+SpacesInParentheses: false
+
