@@ -1,10 +1,12 @@
-#include<iostream>
-#include"disjoint_set.hpp"
+#include <string>
+
+#include "disjoint_set.hpp"
 
 using namespace std;
 
+using UFS = UnionFindSet<int>;
+
 int main()
 {
-    cout << "hello union_find"<<endl;
     return 0;
 }
