@@ -1,11 +1,15 @@
 #include <climits>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "disjoint_set.hpp"
 
 // V就是顶点的数据类型
 // W则是weight, 权重
@@ -17,7 +21,22 @@ namespace matrix {
 template <class V, class W, W MAX_W = INT_MAX, bool Directed = false>
 class Graph
 {
+    typedef Graph<V, W, MAX_W, Directed> self;
+
    public:
+    struct Edge
+    {
+        int _src;
+        int _dst;
+        W _weight;
+
+        Edge(int src, int dst, const W& weight) : _src(src), _dst(dst), _weight(weight) {}
+
+        bool operator>(const Edge& that)const { return _weight > that._weight; }
+    };
+
+    Graph() = default;
+
     // 对于图的构造, 常见的有三种模式
     // 有些OJ题喜欢直接用标准输入构造
     // 有些喜欢写配置文件, 读文件构造
@@ -46,16 +65,21 @@ class Graph
         return _index_map[z];
     }
 
-    void ModEdge(const V& x, const V& y, W n)
+    void _ModEdge(int src, int dst, const W& w)
+    {
+        _matrix[src][dst] = w;
+
+        // 如果是有向图
+        if (Directed == false)
+            _matrix[dst][src] = w;
+    }
+
+    void ModEdge(const V& x, const V& y, const W& w)
     {
         int src = GetVertexIndex(x);
         int dst = GetVertexIndex(y);
 
-        _matrix[src][dst] = n;
-
-        // 如果是有向图
-        if (Directed == false)
-            _matrix[dst][src] = n;
+        _ModEdge(src, dst, w);
     }
 
     void Print() const
@@ -64,7 +88,7 @@ class Graph
         int max_width = 1;
         for (const auto& row : _matrix)
         {
-            for (W w : row)
+            for (const W& w : row)
             {
                 if (w != MAX_W)
                 {
@@ -78,20 +102,20 @@ class Graph
         // 非边字符 "#" 也要考虑宽度
         max_width = std::max(max_width, 1);  // 至少为1
 
-        // Step 2: 打印编号对应关系
+        // Step 2: 打印编号与数据对应关系
         std::cout << "Vertex Index:\n";
         for (size_t i = 0; i < _data.size(); ++i) std::cout << "[" << i << "] " << _data[i] << "  ";
         std::cout << "\n\n";
 
-        // Step 3: 打印列标题
+        // Step 3: 打印列标题（编号而不是 _data）
         std::cout << std::string(max_width + 1, ' ');
-        for (const auto& v : _data) std::cout << std::setw(max_width + 1) << v;
+        for (size_t i = 0; i < _data.size(); ++i) std::cout << std::setw(max_width + 1) << i;
         std::cout << "\n";
 
-        // Step 4: 打印矩阵
+        // Step 4: 打印矩阵内容（行首也用编号）
         for (size_t i = 0; i < _matrix.size(); ++i)
         {
-            std::cout << std::setw(max_width) << _data[i] << " ";
+            std::cout << std::setw(max_width) << i << " ";
             for (size_t j = 0; j < _matrix[i].size(); ++j)
             {
                 if (_matrix[i][j] == MAX_W)
@@ -103,6 +127,99 @@ class Graph
         }
     }
 
+    int Kruskal(self& minTree)
+    {
+        using namespace std;
+
+        self ans(_data.data(), _data.size());
+
+        int size = _data.size();
+        priority_queue<Edge, vector<Edge>, greater<Edge>> heap;
+        for (int i = 0; i < size; ++i)
+        {
+            for (int j = 0; j < size; ++j)
+            {
+                if (_matrix[i][j] != MAX_W)
+                {
+                    heap.emplace(i, j, _matrix[i][j]);
+                }
+            }
+        }
+
+        int ret = 0;
+        UnionFindSet<int> ufs(size);
+        while (!heap.empty())
+        {
+            Edge top = heap.top();
+            heap.pop();
+
+            if (ufs.IsInSameSet(top._src, top._dst))
+                continue;
+
+            ++ret;
+            ufs.Union(top._src, top._dst);
+            ans._ModEdge(top._src, top._dst, top._weight);
+        }
+
+        if (ret == size - 1)
+            minTree = ans;
+
+        return ret - (size - 1);
+    }
+
+    void bfs(const V& start)
+    {
+        int size = _data.size();
+        int src = GetVertexIndex(start);
+        std::vector<bool> visited(size, false);
+
+        visited[src] = true;
+        std::queue<int> q;
+        q.push(src);
+
+        while (!q.empty())
+        {
+            int n = q.size();
+            for (int i = 0; i < n; ++i)
+            {
+                int from = q.front();
+                q.pop();
+
+                for (int lead = 0; lead < size; ++lead)
+                {
+                    if (_matrix[from][lead] == MAX_W)
+                        continue;
+                    if (visited[lead] == true)
+                        continue;
+
+                    q.push(lead);
+                    visited[lead] = true;
+                }
+            }
+        }
+    }
+
+    void _dfs(int src, std::vector<bool>& visit)
+    {
+        visit[src] = true;
+
+        for (int i = 0; i < _data.size(); ++i)
+        {
+            if (visit[i] == true)
+                continue;
+            if (_matrix[src][i] == MAX_W)
+                continue;
+
+            dfs(i, visit);
+        }
+    }
+
+    void dfs(const V& start)
+    {
+        std::vector<bool> visit(_data.size(), false);
+        _dfs(GetVertexIndex(start), visit);
+    }
+
    private:
     std::vector<V> _data;
     std::unordered_map<V, int> _index_map;
@@ -111,7 +228,7 @@ class Graph
 
 void TestGraph()
 {
-    matrix::Graph<char, int, INT_MAX, true> g("0123", 4);
+    matrix::Graph<char, int, INT_MAX> g("0123", 4);
     g.ModEdge('0', '1', 1);
     g.ModEdge('0', '3', 4);
     g.ModEdge('1', '3', 2);
@@ -121,6 +238,31 @@ void TestGraph()
     g.ModEdge('2', '0', 3);
     g.ModEdge('3', '2', 6);
     g.Print();
+}
+
+void TestGraphMinTree()
+{
+    const char* str = "abcdefghi";
+    Graph<char, int> g(str, strlen(str));
+    g.ModEdge('a', 'b', 4);
+    g.ModEdge('a', 'h', 8);
+    // g.ModEdge('a', 'h', 9);
+    g.ModEdge('b', 'c', 8);
+    g.ModEdge('b', 'h', 11);
+
+    g.ModEdge('c', 'i', 2);
+    g.ModEdge('c', 'f', 4);
+    g.ModEdge('c', 'd', 7);
+    g.ModEdge('d', 'f', 14);
+    g.ModEdge('d', 'e', 9);
+    g.ModEdge('e', 'f', 10);
+    g.ModEdge('f', 'g', 2);
+    g.ModEdge('g', 'h', 1);
+    g.ModEdge('g', 'i', 6);
+    g.ModEdge('h', 'i', 7);
+    Graph<char, int> kminTree;
+    std::cout << "Kruskal:" << g.Kruskal(kminTree) << std::endl;
+    kminTree.Print();
 }
 
 }  // namespace matrix

@@ -4,6 +4,6 @@ using namespace std;
 
 int main()
 {
-    table::TestGraph();
+    matrix::TestGraphMinTree();
     return 0;
 }
