@@ -4,6 +4,6 @@ using namespace std;
 
 int main()
 {
-    matrix::TestGraphMinTree();
+    matrix::TestGraphDijkstra();
     return 0;
 }

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <climits>
 #include <cstring>
 #include <iomanip>
@@ -7,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "disjoint_set.hpp"
@@ -32,7 +34,7 @@ class Graph
 
         Edge(int src, int dst, const W& weight) : _src(src), _dst(dst), _weight(weight) {}
 
-        bool operator>(const Edge& that)const { return _weight > that._weight; }
+        bool operator>(const Edge& that) const { return _weight > that._weight; }
     };
 
     Graph() = default;
@@ -162,9 +164,145 @@ class Graph
         }
 
         if (ret == size - 1)
-            minTree = ans;
+            minTree.swap(ans);
 
         return ret - (size - 1);
+    }
+
+    void swap(self& that)
+    {
+        std::swap(_data, that._data);
+        std::swap(_index_map, that._index_map);
+        std::swap(_matrix, that._matrix);
+    }
+
+    int Prim(self& minTree, const V& start)
+    {
+        int n = _data.size();
+        int src = GetVertexIndex(start);
+
+        std::priority_queue<Edge, std::vector<Edge>, std::greater<Edge>> heap;
+
+        std::unordered_set<int> S;
+        std::unordered_set<int> Q;
+
+        S.emplace(src);
+        for (int i = 0; i < n; ++i)
+        {
+            if (i == src)
+                continue;
+
+            Q.emplace(i);
+
+            if (_matrix[src][i] != MAX_W)
+            {
+                heap.emplace(src, i, _matrix[src][i]);
+            }
+        }
+
+        int count = 0;
+        self ans(_data.data(), n);
+        while (!Q.empty() && count < n - 1)
+        {
+            Edge min = heap.top();
+            heap.pop();
+
+            int src = min._src;
+            int dst = min._dst;
+
+            if (Q.count(dst) == 0)
+                continue;
+
+            ++count;
+            ans._ModEdge(src, dst, _matrix[src][dst]);
+            Q.erase(dst);
+            S.emplace(dst);
+
+            int u = min._dst;
+
+            for (int i = 0; i < n; ++i)
+            {
+                if (!Q.count(i))
+                    continue;
+                if (_matrix[u][i] == MAX_W)
+                    continue;
+
+                heap.emplace(u, i, _matrix[u][i]);
+            }
+        }
+
+        if (count == n - 1)
+            minTree.swap(ans);
+
+        return count - (n - 1);
+    }
+
+    void _Dijkstra(int src, std::vector<W>& dist, std::vector<int>& parent)
+    {
+        dist[src] = W();
+        parent[src] = src;
+
+        std::vector<bool> S(_data.size(), false);
+        std::vector<bool> Q(_data.size(), true);
+
+        for (int i = 0; i < _data.size(); ++i)
+        {
+            int u = -1;
+            W min = MAX_W;
+            for (int j = 0; j < Q.size(); ++j)
+            {
+                if (Q[j] == false)
+                    continue;
+
+                if (dist[j] < min)
+                {
+                    min = dist[j];
+                    u = j;
+                }
+            }
+
+            for (int j = 0; j < _data.size(); ++j)
+            {
+                if (_matrix[u][j] == MAX_W)
+                    continue;
+                if (S[j] == true)
+                    continue;
+
+                if (dist[u] + _matrix[u][j] < dist[j])
+                {
+                    parent[j] = u;
+                    dist[j] = dist[u] + _matrix[u][j];
+                }
+            }
+
+            Q[u] = false;
+            S[u] = true;
+        }
+    }
+
+    std::vector<V> Dijkstra(const V& start, const V& end)
+    {
+        int src = GetVertexIndex(start);
+        std::vector<W> dist(_data.size(), MAX_W);   // 记录最短路径
+        std::vector<int> parent(_data.size(), -1);  // 寻找上一个前驱顶点
+
+        _Dijkstra(src, dist, parent);
+
+        std::vector<V> path;
+        path.reserve(_data.size());
+        path.emplace_back(end);
+
+        int idx = GetVertexIndex(end);
+        while (parent[idx] != idx)
+        {
+            idx = parent[idx];
+            path.emplace_back(_data[idx]);
+        }
+
+        path.shrink_to_fit();
+        std::reverse(path.begin(), path.end());
+
+        return path;
     }
 
     void bfs(const V& start)
@@ -263,6 +401,35 @@ void TestGraphMinTree()
     Graph<char, int> kminTree;
     std::cout << "Kruskal:" << g.Kruskal(kminTree) << std::endl;
     kminTree.Print();
+
+    Graph<char, int> PrimTree;
+    std::cout << "Prim:" << g.Prim(PrimTree, 'a') << std::endl;
+    PrimTree.Print();
+}
+
+void TestGraphDijkstra()
+{
+    const char* str = "syztx";
+    Graph<char, int, INT_MAX, true> g(str, strlen(str));
+    g.ModEdge('s', 't', 10);
+    g.ModEdge('s', 'y', 5);
+    g.ModEdge('y', 't', 3);
+    g.ModEdge('y', 'x', 9);
+    g.ModEdge('y', 'z', 2);
+    g.ModEdge('z', 's', 7);
+    g.ModEdge('z', 'x', 6);
+    g.ModEdge('t', 'y', 2);
+    g.ModEdge('t', 'x', 1);
+    g.ModEdge('x', 'z', 4);
+    auto path = g.Dijkstra('s', 'x');
+
+    for (auto c : path)
+    {
+        std::cout << "[" << c << "]";
+        if (c != path.back())
+            std::cout << "->";
+    }
+    std::cout << std::endl;
 }
 
 }  // namespace matrix
