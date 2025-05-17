@@ -4,6 +4,6 @@ using namespace std;
 
 int main()
 {
-    matrix::TestGraphDijkstra();
+    matrix::TestFloydWarShall();
     return 0;
 }

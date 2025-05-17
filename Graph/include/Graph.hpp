@@ -237,6 +237,27 @@ class Graph
         return count - (n - 1);
     }
 
+    std::vector<V> path(int src, int dst, const std::vector<int> parent)
+    {
+        std::vector<V> path;
+        path.reserve(_data.size());
+        path.emplace_back(_data[dst]);
+
+        int idx = dst;
+        while (parent[idx] != src)
+        {
+            idx = parent[idx];
+            path.emplace_back(_data[idx]);
+        }
+
+        path.emplace_back(_data[src]);
+
+        path.shrink_to_fit();
+        std::reverse(path.begin(), path.end());
+
+        return path;
+    }
+
     void _Dijkstra(int src, std::vector<W>& dist, std::vector<int>& parent)
     {
         dist[src] = W();
@@ -288,21 +309,171 @@ class Graph
 
         _Dijkstra(src, dist, parent);
 
-        std::vector<V> path;
-        path.reserve(_data.size());
-        path.emplace_back(end);
+        return path(src, GetVertexIndex(end), parent);
+    }
 
-        int idx = GetVertexIndex(end);
-        while (parent[idx] != idx)
+    bool _BellmanFord(int src, std::vector<W>& dist, std::vector<int>& parent)
+    {
+        dist[src] = W();
+        parent[src] = src;
+
+        int n = _index_map.size();
+
+        bool result = true;
+        for (int i = 0; i < n; ++i)
         {
-            idx = parent[idx];
-            path.emplace_back(_data[idx]);
+            std::cout << "================================" << std::endl;
+            std::cout << "第" << i + 1 << "轮松弛尝试" << std::endl;
+
+            bool flag = true;
+            for (int j = 0; j < n; ++j)
+            {
+                for (int k = 0; k < n; ++k)
+                {
+                    if (_matrix[j][k] == MAX_W)
+                        continue;
+                    if (dist[j] == MAX_W)
+                        continue;
+
+                    std::cout << "对" << j << "到" << k << "尝试更新" << std::endl;
+                    if (dist[j] + _matrix[j][k] < dist[k])
+                    {
+                        flag = false;
+                        std::cout << "原值" << dist[k] << " ";
+                        dist[k] = dist[j] + _matrix[j][k];
+                        std::cout << "现值" << dist[k] << std::endl;
+                        parent[k] = j;
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            std::cout << std::endl;
+            if (flag)
+                break;
+            if (i == n - 1)
+                result = false;
         }
 
-        path.shrink_to_fit();
-        std::reverse(path.begin(), path.end());
+        return result;
+    }
 
-        return path;
+    bool BellmanFord(const V& start, const V& end, std::vector<V>& p)
+    {
+        int src = GetVertexIndex(start);
+        std::vector<W> dist(_data.size(), MAX_W);
+        std::vector<int> parent(_data.size(), -1);
+
+        bool ret = _BellmanFord(src, dist, parent);
+
+        // 负权环会让路径生成陷入死循环
+        if (ret == true)
+            p = path(src, GetVertexIndex(end), parent);
+
+        return ret;
+    }
+
+    void _FloydWarshall(std::vector<std::vector<W>>& vvDist,
+                        std::vector<std::vector<int>>& vvParent)
+    {
+        int n = _data.size();
+
+        // 初始化时直接连接
+        // 所以parent就是i
+        for (int i = 0; i < n; ++i)
+        {
+            for (int j = 0; j < n; ++j)
+            {
+                if (_matrix[i][j] != MAX_W)
+                {
+                    vvDist[i][j] = _matrix[i][j];
+                    vvParent[i][j] = i;
+                }
+                else
+                {
+                    vvDist[i][j] = _matrix[i][j];
+                    vvParent[i][j] = -1;
+                }
+
+                if (i == j)
+                {
+                    vvDist[i][j] = W();
+                    vvParent[i][j] = -1;
+                }
+            }
+        }
+
+        for (int k = 0; k < n; ++k)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                for (int j = 0; j < n; ++j)
+                {
+                    if (vvDist[i][k] != MAX_W && vvDist[k][j] != MAX_W)
+                    {
+                        if (vvDist[i][j] > vvDist[i][k] + vvDist[k][j])
+                        {
+                            vvDist[i][j] = vvDist[i][k] + vvDist[k][j];
+
+                            // k -> j可能并不直接相连
+                            // 所以是[k][j]
+                            vvParent[i][j] = vvParent[k][j];
+                        }
+                    }
+                }
+            }
+
+            // 打印权值和路径矩阵观察数据
+            for (size_t i = 0; i < n; ++i)
+            {
+                for (size_t j = 0; j < n; ++j)
+                {
+                    if (vvDist[i][j] == MAX_W)
+                    {
+                        // cout << "*" << " ";
+                        printf("%3c", '*');
+                    }
+                    else
+                    {
+                        // cout << vvDist[i][j] << " ";
+                        printf("%3d", vvDist[i][j]);
+                    }
+                }
+                std::cout << std::endl;
+            }
+            std::cout << std::endl;
+            for (size_t i = 0; i < n; ++i)
+            {
+                for (size_t j = 0; j < n; ++j)
+                {
+                    // cout << vvParentPath[i][j] << " ";
+                    printf("%3d", vvParent[i][j]);
+                }
+                std::cout << std::endl;
+            }
+            std::cout << "=================================" << std::endl;
+        }
+    }
+
+    std::vector<std::vector<V>> FloydWarshall()
+    {
+        int n = _data.size();
+        std::vector<std::vector<W>> vvDist(n, std::vector<W>(n, MAX_W));
+        std::vector<std::vector<int>> vvParent(n, std::vector<int>(n, -1));
+
+        _FloydWarshall(vvDist, vvParent);
+
+        std::vector<std::vector<V>> result;
+        for (int i = 0; i < n; ++i)
+        {
+            for (int j = 0; j < n; ++j)
+            {
+                if (i == j)
+                    continue;
+                result.emplace_back(path(i, j, vvParent[i]));
+            }
+        }
+
+        return result;
     }
 
     void bfs(const V& start)
@@ -430,6 +601,63 @@ void TestGraphDijkstra()
             std::cout << "->";
     }
     std::cout << std::endl;
+}
+
+void TestGraphBellmanFord()
+{
+    const char* str = "syztx";
+    Graph<char, int, INT_MAX, true> g(str, strlen(str));
+    g.ModEdge('s', 't', 6);
+    g.ModEdge('s', 'y', 7);
+    g.ModEdge('y', 'z', 9);
+    g.ModEdge('y', 'x', -3);
+    g.ModEdge('y', 's', 1);  // 新增
+    g.ModEdge('z', 's', 2);
+    g.ModEdge('z', 'x', 7);
+    g.ModEdge('t', 'x', 5);
+    // g.ModEdge('t', 'y', 8);
+    g.ModEdge('t', 'y', -8);  // 修改
+    g.ModEdge('t', 'z', -4);
+    g.ModEdge('x', 't', -2);
+
+    std::vector<char> path;
+    auto validity = g.BellmanFord('s', 'x', path);
+
+    std::cout << (validity == true ? "无负权环, 结果可行" : "有负权环, 问题无解") << std::endl;
+    for (auto c : path)
+    {
+        std::cout << "[" << c << "]";
+        if (c != path.back())
+            std::cout << "->";
+    }
+    std::cout << std::endl;
+}
+
+void TestFloydWarShall()
+{
+    const char* str = "12345";
+    Graph<char, int, INT_MAX, true> g(str, strlen(str));
+    g.ModEdge('1', '2', 3);
+    g.ModEdge('1', '3', 8);
+    g.ModEdge('1', '5', -4);
+    g.ModEdge('2', '4', 1);
+    g.ModEdge('2', '5', 7);
+    g.ModEdge('3', '2', 4);
+    g.ModEdge('4', '1', 2);
+    g.ModEdge('4', '3', -5);
+    g.ModEdge('5', '4', 6);
+
+    auto vv = g.FloydWarshall();
+    for (const auto& v : vv)
+    {
+        for (const auto& e : v)
+        {
+            std::cout << "[" << e << "]";
+            if (e != v.back())
+                std::cout << "->";
+        }
+        std::cout << std::endl;
+    }
 }
 
 }  // namespace matrix
