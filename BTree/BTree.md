@@ -47,9 +47,15 @@
 
 先不要看规则, 规则太多了, 一起看看不出什么东西.
 
-首先, B树有一个名为"分支因子"的重要参数, 通常记为`m`, 正如它的名字所言, "分支因子"描述了一棵B树到底有"多分叉", 一般而言, `m`的取值是`50-2000`, 具体配置视实际需求而定, 对于服务器来说, 一般配置为`1024`, 是一个程序员很熟悉的数字.
+首先, 需要明确的是, B树其实像一个迷你的文件系统, 它的主体, 也就是节点, 实际上是就存在磁盘上的. 内存里的节点, 实际上就是只有一个磁盘索引, 系统拿到这个磁盘索引之后, 会将节点中的数据加载到内存中,我们将来为了方便, 就直接看那个从磁盘上被加载进来的节点, 而不是原来的那个只有磁盘索引的节点. 它的实际结构就是这张图
 
-B树中的每个节点, 都被分为两层, 或者更直白的说, 有两个数组, 一个数组存放的是关键字, 及其对应的磁盘索引, 一个数组存放子节点的指针, 为了简化模型, 第一个数组, 我们暂且就认为是只放关键字, 而不放磁盘索引,  该数组中的关键字呈现升序摆列, 是将来进行路由选择的判断依据, 第一个数组中的每个有效元素, 都有与之对应的两个子节点, 因此, 第二个数组中的节点个数始终是第一个数组中关键字个数的加一.
+![image-20250519132108526](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519132108597.png)
+
+内存节点里面只有磁盘地址, 其它什么都没有, 节点中的真正数据都在磁盘上, 访问一个节点的动作是根据节点上的索引, 找到那个特定的数据块, 然后把它整个一起读到内存中. 下文我们说的那个节点, 实际上是这个读进来的数据块. 
+
+接下来我们要知道, B树有一个名为"分支因子"的重要参数, 通常记为`m`, 正如它的名字所言, "分支因子"描述了一棵B树到底有"多分叉", 一般而言, `m`的取值是`50-2000`, 具体配置视实际需求而定, 对于服务器来说, 一般配置为`1024`, 是一个程序员很熟悉的数字.
+
+B树中的每个节点, 都被分为两层, 或者更直白的说, 有两个数组, 一个数组存放的是关键字, 及其对应的磁盘索引, 一个数组存放子节点的指针, 在下面写代码的时候, 为了简化模型, 第一个数组, 我们暂且就认为是只放关键字, 而不放磁盘索引,  该数组中的关键字呈现升序摆列, 是将来进行路由选择的判断依据, 第一个数组中的每个有效元素, 都有与之对应的两个子节点, 因此, 第二个数组中的节点个数始终是第一个数组中关键字个数的加一.
 
 ![image-20250518214838363](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250518214838413.png)
 
@@ -57,5 +63,219 @@ B树中的每个节点, 都被分为两层, 或者更直白的说, 有两个数�
 
 相当于一个顶点缝合了之前AVL或者红黑树中的多个节点, 当有个关键字从上面过来时, 我们首先通过一些手段(二分查找), 找到和关键字相近的`data`, (也有可能直接就找到这个关键字了那样就没有路由选择, 所以我们这里暂且不说),  比如说, 我想找的数字是`3`, 这三个数字分别是`1, 5, 9`, 那么我们找到最近的(最近的说法似乎不准确, 应该是小于该关键字的最大元素), `159`里面`59`都大于`3`, 所以这里找到的`data`就是`1`, 而`3`又在`1`的右边, 所以下一层就会从`1`的右边, 即`child2`出发.
 
+![image-20250519122942109](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519122942226.png)
 
+为了满足一个关键字搭配两个子节点的机制, 我们要求, 在任何情况下, 都应该满足, 子节点的个数恰好是关键字个数的加一.
+
+之前我们说, `m`控制着多叉平衡树的节点规模, 它是这样控制的. 每个节点中的子节点也就是第二层的元素个数, 最少是`m / 2`向上取整, 最多是`m`. 这样设计是为了之后便于树的生长.
+
+因此, 每个节点的结构就是 `(n，A0，K1，A1，K2，A2，… ，Kn，An）`
+
+下面, 我们以`m = 3`的规格, 插入这样的一组数据`{53, 139, 75, 49, 145, 36, 101}  `
+
+1. 插入53
+
+   首先, 我们必须构建一个新的节点, 因为现在的B树实际上只是一棵空树. 按照我们上文所说的, 理应构建一个关键字数组大小为`2`, 子节点数组大小为`3`的节点, 但实际上, 我们需要构建一个关键字数组大小为`3`, 子节点数组大小为`4`的节点, 这是因为, B树对于数据超额的处理态度是先超额放入一份数据, 然后再进行分裂或者生长, 所以要预留一个位置存放多出的那份关键字和子节点
+
+   ![image-20250519134226749](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519134226811.png)
+
+   然后插入一个`35`
+
+   ![image-20250519134358757](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519134358807.png)
+
+2.  插入139
+
+   直接插入
+
+   ![image-20250519134539201](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519134539248.png)
+
+3. 插入75
+
+   关键字是升序排列的, 所以需要进行调整
+
+   ![image-20250519134900233](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519134900275.png)
+
+4. 满了, 需要进行分裂
+
+   我们首先构建两个节点, 分别是它的父节点和兄弟节点(如果有父节点, 那就不用再创建了)
+
+   ![image-20250519135225270](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519135225348.png)
+
+   然后把中位数(就是中间位置)之后的数据转移给兄弟节点, 我们这里`m = 3`, 看得不是很明显, 如果`m = 1024`, 就会把`512`的关键字给兄弟
+
+   ![image-20250519135409002](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519135409070.png)
+
+   把中位数`75`交给父节点
+
+   ![image-20250519135653709](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519135653774.png)然后让父节点在对应的位置连接自己和兄弟节点![image-20250519140140867](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519140140928.png)
+
+5. 插入49, 注意只有叶节点能插入新的数据
+
+   ![image-20250519140345705](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519140345762.png)
+
+6. 插入145
+
+   ![image-20250519140448985](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519140449043.png)
+
+7. 插入36
+
+   ![image-20250519141228236](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519141228292.png)
+
+8. 满了, 再次分裂, 有父节点, 那就不需要再构建父节点了
+
+   ![image-20250519141705791](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519141705856.png)
+
+   把后半部分的关键字交给兄弟节点
+
+   ![image-20250519141836939](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519141837004.png)
+
+   把中间的关键字交给父节点
+
+   ![image-20250519141954853](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519141954913.png)
+
+   父节点的第二层也需要做相应的调整
+
+   ![image-20250519142108192](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142108248.png)
+
+   把兄弟节点也连接上
+
+   ![image-20250519142151295](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142151352.png)
+
+9. 插入101
+
+   ![image-20250519142345061](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142345132.png)
+
+   满了, 再分裂
+
+   ![image-20250519142522200](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142522254.png)
+
+   ![image-20250519142628313](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142628365.png)
+
+   ![image-20250519142822393](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142822457.png)
+
+   ![image-20250519142926070](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142926134.png)
+
+   ![image-20250519143032376](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519143032439.png)
+
+非叶节点只能接收来自他人转移的关键字和子节点, 叶节点负责容纳新的数据. 因为这样就不用担心新节点把子节点的关系弄乱(叶节点根本没有子节点), 叶节点满了, 分裂出一个兄弟节点, 并向上递交一个中间关键字, 负责维护新的兄弟关系. 当根节点分裂时, 即新增了一层,  B树是同层或者向上长的, 它天然平衡.
+
+当`m`很大时, 仅仅两层的B树, 其数据量就能达到十分恐怖的量级, 正如算法导论中所说明的那样
+
+![image-20250519152116353](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519152116457.png)
+
+根节点经常被用, 所以可以直接长久地放到内存里, 不进行释放, 这样的话, 每次路由我们就能深入一层, 所以这样的话, 我们只需要路由三次, 但实际上只要IO两次,  就可以到达这棵B树的任意一个位置.
+
+如果是刚刚分裂出来的两层B树, 那么根节点有1个关键字, 根节点比较特殊, 可以不为`m / 2`, 引出2个子节点, 每个子节点存储500个关键字, 引出501个子节点, 一共是1002个子节点, 之后是更深层, 更深层有1002个子节点, 每个子节点500关键字, 那么就是501000个关键字, 也是挺大的, 最空和最满都是极端, 一般都看不到这种情况.
+
+## 简单实现
+
+下面我们非常简单地实现一下B树, 主要是借助于代码让我们更深入地理解B树的运作原理, 因为B树的规则特别多, 所以我们会采用边写边调试的方式.
+
+```cpp
+#pragma once
+#include <stddef.h>     // size_t
+#include <algorithm>    // std::fill
+
+
+template <class K, size_t M>
+    struct BTreeNode
+    {
+        private:
+        typedef BTreeNode<K, M> self;
+
+        public:
+        size_t _n;          // 记录关键字的个数
+
+        K _keys[M];         // 关键字数组
+        self* _subs[M + 1]; // 子节点指针数组
+
+        BTreeNode(){
+            // 初始化, 数据清空
+            _n = 0;
+            std::fill(_keys, _keys + sizeof(_keys), K());
+            std::fill(_subs, _subs + sizeof(_subs), nullptr);
+        }
+
+        // 二分查找, 如果target在关键字数组中, 返回索引
+        // 否则, 返回将要插入的位置
+        ssize_t search(const K& target)
+        {
+            if(_n == 0) return 0;
+
+            ssize_t left = 0, right = _n - 1;
+            while(left <= right)
+            {
+                ssize_t mid = left + (right - left) / 2;
+                if(_keys[mid] < target)
+                    left = mid + 1;
+                else if(_keys[mid] > target)
+                    right = mid - 1;
+                else
+                    return mid;
+            }
+
+            return left;
+        }
+    };
+
+template <class K, size_t M>
+    class BTree
+    {
+        typedef BTreeNode<K, M> Node;
+
+        public:
+        bool insert(const K& key)
+        {
+            if(_root == nullptr)
+            {
+                Node* node = new Node();
+                node->_keys[0] = key;
+                ++node->_n;
+                _root = node;
+                return true;
+            }
+
+            return false;
+        }
+
+        private:
+        Node* _root = nullptr;
+    };
+
+
+#include"BTree.hpp"
+
+#include<iostream>
+
+using namespace std;
+
+typedef BTree<int, 3> BT;
+
+void TestBTree()
+{
+    int arr[] = {53, 139, 75, 49, 145, 36, 101};
+
+    BT o;
+
+    for(auto e : arr)
+    {
+        o.insert(e);
+    }
+}
+
+int main()
+{
+    cout <<"hello BTree"<<endl;
+    TestBTree();
+    return 0;
+}
+```
+
+最开始, 很简单, 因为压根没有根节点, 所以直接创建一个节点, 把关键字扔进去就行.
+
+![image-20250519165345466](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519165345624.png)
+
+![image-20250519165411376](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519165411524.png)
+
+接下来就不好写了, 那么首先, 由于新关键字都插入叶节点, 所以先要找到叶节点.
 
