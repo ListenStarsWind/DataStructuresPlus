@@ -171,6 +171,260 @@ B树中的每个节点, 都被分为两层, 或者更直白的说, 有两个数�
 
 下面我们非常简单地实现一下B树, 主要是借助于代码让我们更深入地理解B树的运作原理, 因为B树的规则特别多, 所以我们会采用边写边调试的方式.
 
+我们先写一下树的节点.
+
+```cpp
+#pragma once
+#include <stddef.h>     // size_t
+#include <algorithm>    // std::fill
+#include <utility>      // std::pair
+#include <iterator>     // std::begin(arr), std::end(arr)
+
+
+template <class K, size_t M>
+struct BTreeNode
+{
+    private:
+    typedef BTreeNode<K, M> self;
+
+    public:
+    size_t _n;          // 记录关键字的个数
+
+    K _keys[M];         // 关键字数组
+    self* _subs[M + 1]; // 子节点指针数组
+
+    self* _parent;
+
+    BTreeNode(){
+        // 初始化, 数据清空
+        _n = 0;
+        _parent = nullptr;
+        std::fill(std::begin(_keys), std::end(_keys), K());
+        std::fill(std::begin(_subs), std::end(_subs), nullptr);
+    }
+
+    // 二分查找, 如果target在关键字数组中, 返回索引
+    // 否则, 返回-1
+    std::pair<bool, size_t> search(const K& target)
+    {
+        if(_n == 0) return {false, 0};
+
+        ssize_t left = 0, right = _n - 1;
+        while(left <= right)
+        {
+            ssize_t mid = left + (right - left) / 2;
+            if(_keys[mid] < target)
+                left = mid + 1;
+            else if(_keys[mid] > target)
+                right = mid - 1;
+            else
+                return {true, mid};
+        }
+
+        return {false, left};
+    }
+};
+```
+
+对于`_n, _keys, _subs`相信已经不用说了, 不过还需要一个`_parent`需要说一下, 因为B树是向上生长的, 所以要求子节点能找到自己的父节点, 所以需要这个`_parent`来回指自己的父节点. 之后是一个显示写的默认构造, 我们将其中的成员都进行了清空, 方便等会儿进行调试, 现象更加明显.
+
+接下来是一个二分查找, 它利用数组元素的有序性, 将数组分为两个部分, 为了方便起见, 我们先假设数组中有我们要找的元素, 此时, 目标元素小的就是前面的那个区间, 大的就是后面的那个区间, 所以当落到前面那个区间, 需要`left = mid + 1`, 落到后面的那个区间, 需要`right = mid - 1`,
+
+最后为了分辨到底能不能找到, 我们的返回值是个`pair`, `first`表示有没有找到, 如果能找到的话`second`就是目标元素的下标, 如果找不到, `second`返回的是应该插入的位置,
+
+接下来, 我们来写`insert`, 对于第一个节点的插入, 很简单, 因为此时B树就是空的, 所以直接创建一个, 往里面填就行了.
+
+```cpp
+bool insert(const K& key)
+{
+    if(_root == nullptr)
+    {
+        Node* node = new Node();
+        node->_keys[0] = key;
+        ++node->_n;
+        _root = node;
+        return true;
+    }
+
+}
+```
+
+我忽然发现上面的图画错了, 第一个元素是`53`, 但我们当做`35`来插入了, 不过上面的图在逻辑上还是没错的, 接下来, 我们的用例就把第一个元素当做`35`
+
+```cpp
+#include"BTree.hpp"
+
+#include<iostream>
+
+using namespace std;
+
+typedef BTree<int, 3> BT;
+
+void TestBTree()
+{
+    int arr[] = {35, 139, 75, 49, 145, 36, 101};
+
+    BT o;
+
+    for(auto e : arr)
+    {
+        o.insert(e);
+    }
+}
+
+int main()
+{
+    cout <<"hello BTree"<<endl;
+    TestBTree();
+    return 0;
+}
+```
+
+![image-20250521110934604](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250521110935071.png)
+
+![image-20250521111003122](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250521111003538.png)
+
+接下来就比较麻烦了,  首先, 我们知道B树都是在叶节点进行插入的, 所以我们先写一下`find`, 用来查找一个关键字, 如果找不到, 就返回`-1`下标, 如果能找到, 就返回该关键字的下标, 于是就有最基本的相关代码
+
+```cpp
+ssize_t find(const K& key)
+{
+ 	Node* curr = _root;
+    
+    while(curr != nullptr)
+    {
+        auto group = curr->search(key);
+        
+        if(grout.first == true)
+            return group.second;
+       
+        // 说明没找到, 此时的second恰好就是该路由的下一个节点
+        curr = curr->_subs[group.second];
+    }
+    
+    return -1;
+}
+```
+
+但为了后面能获得对应的叶节点, 我们再添加一个`prev`
+
+```cpp
+// 定义find, 如果关键字已经存在,
+// 返回对应的节点及下标索引
+// 不存在, 返回-1和叶节点
+std::pair<Node*, ssize_t> find(const K& key)
+{
+    Node* curr = _root;
+    Node* prev = nullptr;
+
+    ssize_t idx = 0;
+    while(curr != nullptr)
+    {
+        auto group = _root->search(key);
+        if(group.first == true)
+            return {curr, group.second};
+
+        idx = group.second;
+
+        prev = curr;
+        curr = curr->_subs[idx];
+    }
+
+    return {prev, -1};
+}
+```
+
+如果它返回的是已经找到, 由于我们当前的B树是不支持冗余关键字的, 所以直接返回false, 如果找不到, 那我们就接收相应的叶节点指针, 在这个叶节点指针上插入新的数据
+
+```cpp
+bool insert(const K& key)
+{
+    if(_root == nullptr)
+    {
+        Node* node = new Node();
+        node->_keys[0] = key;
+        ++node->_n;
+        _root = node;
+        return true;
+    }
+
+    auto group = find(key);
+    
+    if(group.second >= 0)
+        return false;
+    
+    Node* parent = group.first;
+    
+    _insert(key, parent);
+}
+```
+
+我们这里就把叶节点叫做`parent`, 意为"叶节点的父节点", 在后面, 这个`parent`还会有更多的含义, 在这之后, 我们调用`_insert`, `_insert`的功能是向指定的一个节点中插入一个关键字, 在这之后, 如果叶节点的关键字数目满了, 就需要进行分裂
+
+```cpp
+bool insert(const K& key)
+{
+    if(_root == nullptr)
+    {
+        Node* node = new Node();
+        node->_keys[0] = key;
+        ++node->_n;
+        _root = node;
+        return true;
+    }
+
+    auto group = find(key);
+    
+    if(group.second >= 0)
+        return false;
+    
+    Node* parent = group.first;
+    
+    _insert(key, parent);
+    
+    if(parent->_n != M)
+        return true;
+    
+    Node* brother = new Node();
+    
+    
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```cpp
 #pragma once
 #include <stddef.h>     // size_t
@@ -279,3 +533,4 @@ int main()
 
 接下来就不好写了, 那么首先, 由于新关键字都插入叶节点, 所以先要找到叶节点.
 
+31234
