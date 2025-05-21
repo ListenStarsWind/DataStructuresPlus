@@ -2,6 +2,7 @@
 #include <stddef.h>     // size_t
 #include <algorithm>    // std::fill
 #include <utility>      // std::pair
+#include <iterator>     // std::begin(arr), std::end(arr)
 
 
 template <class K, size_t M>
@@ -22,8 +23,8 @@ struct BTreeNode
         // 初始化, 数据清空
         _n = 0;
         _parent = nullptr;
-        std::fill(_keys, _keys + sizeof(_keys), K());
-        std::fill(_subs, _subs + sizeof(_subs), nullptr);
+        std::fill(std::begin(_keys), std::end(_keys), K());
+        std::fill(std::begin(_subs), std::end(_subs), nullptr);
     }
 
     // 二分查找, 如果target在关键字数组中, 返回索引
@@ -56,7 +57,28 @@ class BTree
     // 向一个节点插入一个关键字
     void _insert(const K& key, Node* node, Node* sub = nullptr)
     {
+        auto [temp, idx] = node->search(key);
 
+        if(idx >= node->_n)
+        {
+            // 说明直接尾插即可
+        }
+        else
+        {
+            // 说明需要挪动数据
+            for(size_t i = node->_n; i > idx; --i)
+            {
+                std::swap(node->_keys[i], node->_keys[i-1]);
+                std::swap(node->_subs[i+1], node->_subs[i]);
+            }
+        }
+
+        node->_keys[idx] = key;
+        node->_subs[idx+1] = sub;
+        node->_n++;
+
+        if(sub != nullptr)
+            sub->_parent = node;
     }
 
     public:
@@ -111,7 +133,7 @@ class BTree
         Node* prev = nullptr;
         while(parent != nullptr)
         {
-            _insert(key, parent, Sub);
+            _insert(CirKey, parent, Sub);
             if(parent->_n != M) return true;
 
             // 满了, 开始分裂.
@@ -124,8 +146,12 @@ class BTree
             for(size_t i = mid + 1; i < M; ++i)
             {
                 // 交换一下调试效果更明显
-                std::swap(brother->_keys[size++], parent->_keys[i]);
+                std::swap(brother->_keys[size], parent->_keys[i]);
+                std::swap(brother->_subs[size++], parent->_subs[i]);
             }
+
+            std::swap(brother->_subs[size], parent->_subs[M]);
+            
             brother->_n = size;
 
             // 这是叶节点, 可以不管子节点
@@ -134,95 +160,24 @@ class BTree
             parent->_n -= (size + 1);
 
             // 把brother与父节点的连接转化成在父节点中插入一个key和节点
-            CirKey = parent->_n[mid];
+            CirKey = parent->_keys[mid];
             Sub = brother;
-            parent->_n[mid] = K();
+            parent->_keys[mid] = K();
             prev = parent;
             parent = parent->_parent;
 
         }
 
         // 分裂到了根节点
-        Node* root = new Node();
-        root->_keys[0] = CirKey ;
-        root->_subs[0] = prev;
-        root->_subs[1] = Sub;
-        root->_n = 1;
+        _root = new Node();
+        _root->_keys[0] = CirKey;
+        _root->_subs[0] = prev;
+        _root->_subs[1] = Sub;
+        _root->_n = 1;
 
-
-
-
-
-
-
-
-
-        // // 不存在, 找到叶节点
-        // Node* curr = group.first;
-
-        // K CirKey = key;
-        // Node* Sub = nullptr;
-
-        // while(true)
-        // {
-        //     _insert(key, curr, Sub);
-        //     if(curr->_n != M) return true;
-
-        //     // 满了, 开始分裂.
-        //     Node* brother = new Node();
-
-        //     size_t mid = curr->_n / 2;
-
-        //     // 将[mid+1, M-1]部分转交给兄弟节点
-        //     size_t size = 0;
-        //     for(size_t i = mid + 1; i < M; ++i)
-        //     {
-        //         // 交换一下调试效果更明显
-        //         std::swap(brother->_keys[size++], curr->_keys[i]);
-        //     }
-        //     brother->_n = size;
-
-        //     // 这是叶节点, 可以不管子节点
-
-        //     // size转交给brother, 1转交给父节点
-        //     curr->_n -= (size + 1);
-
-        //     // 把brother与父节点的连接转化成在父节点中插入一个key和节点
-        //     CirKey = curr->_n[mid];
-        //     Sub = brother;
-        //     curr->_n[mid] = K();
-        //     curr = curr->_parent;
-        // }
-
-
-
-        // _insert(key, curr);
-
-        // if(curr->_n == M)
-        // {
-        //     // 满了, 开始分裂.
-        //     Node* brother = new Node();
-
-        //     size_t mid = curr->_n / 2;
-
-        //     // 将[mid+1, M-1]部分转交给兄弟节点
-        //     size_t size = 0;
-        //     for(size_t i = mid + 1; i < M; ++i)
-        //     {
-        //         // 交换一下调试效果更明显
-        //         std::swap(brother->_keys[size++], curr->_keys[i]);
-        //     }
-        //     brother->_n = size;
-
-        //     // 这是叶节点, 可以不管子节点
-
-        //     // size转交给brother, 1转交给父节点
-        //     curr->_n -= (size + 1);
-
-        //     // 把brother与父节点的连接转化成在父节点中插入一个key和节点
-        //     _insert(curr->_n[mid], curr->_parent, brother);
-        //     curr->_n[mid] = K();
-        // }
+        // 子节点建立回指指针
+        _root->_subs[0]->_parent = _root;
+        _root->_subs[1]->_parent = _root;
 
         return true;
     }

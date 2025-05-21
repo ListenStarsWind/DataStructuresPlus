@@ -8,7 +8,7 @@ typedef BTree<int, 3> BT;
 
 void TestBTree()
 {
-    int arr[] = {53, 139, 75, 49, 145, 36, 101};
+    int arr[] = {35, 139, 75, 49, 145, 36, 101};
 
     BT o;
 
