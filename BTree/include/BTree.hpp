@@ -151,10 +151,8 @@ class BTree
             }
 
             std::swap(brother->_subs[size], parent->_subs[M]);
-            
-            brother->_n = size;
 
-            // 这是叶节点, 可以不管子节点
+            brother->_n = size;
 
             // size转交给brother, 1转交给父节点
             parent->_n -= (size + 1);
