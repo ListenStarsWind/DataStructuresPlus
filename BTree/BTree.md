@@ -391,146 +391,280 @@ bool insert(const K& key)
 }
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+首先我们需要把后面的部分交给兄弟节点
 
 ```cpp
-#pragma once
-#include <stddef.h>     // size_t
-#include <algorithm>    // std::fill
+Node* brother = new Node();
+size_t mid = parent->_n / 2;
 
-
-template <class K, size_t M>
-    struct BTreeNode
-    {
-        private:
-        typedef BTreeNode<K, M> self;
-
-        public:
-        size_t _n;          // 记录关键字的个数
-
-        K _keys[M];         // 关键字数组
-        self* _subs[M + 1]; // 子节点指针数组
-
-        BTreeNode(){
-            // 初始化, 数据清空
-            _n = 0;
-            std::fill(_keys, _keys + sizeof(_keys), K());
-            std::fill(_subs, _subs + sizeof(_subs), nullptr);
-        }
-
-        // 二分查找, 如果target在关键字数组中, 返回索引
-        // 否则, 返回将要插入的位置
-        ssize_t search(const K& target)
-        {
-            if(_n == 0) return 0;
-
-            ssize_t left = 0, right = _n - 1;
-            while(left <= right)
-            {
-                ssize_t mid = left + (right - left) / 2;
-                if(_keys[mid] < target)
-                    left = mid + 1;
-                else if(_keys[mid] > target)
-                    right = mid - 1;
-                else
-                    return mid;
-            }
-
-            return left;
-        }
-    };
-
-template <class K, size_t M>
-    class BTree
-    {
-        typedef BTreeNode<K, M> Node;
-
-        public:
-        bool insert(const K& key)
-        {
-            if(_root == nullptr)
-            {
-                Node* node = new Node();
-                node->_keys[0] = key;
-                ++node->_n;
-                _root = node;
-                return true;
-            }
-
-            return false;
-        }
-
-        private:
-        Node* _root = nullptr;
-    };
-
-
-#include"BTree.hpp"
-
-#include<iostream>
-
-using namespace std;
-
-typedef BTree<int, 3> BT;
-
-void TestBTree()
+// 将`[mid+1, M-1]`的区域转交给兄弟节点
+size_t size = 0;
+for(size_t i = mid + 1; i < M; ++i)
 {
-    int arr[] = {53, 139, 75, 49, 145, 36, 101};
-
-    BT o;
-
-    for(auto e : arr)
-    {
-        o.insert(e);
-    }
+    // 交换一下调试的效果更好
+    swap(parent->_keys[i], brother->_keys[size++]);
+    // 由于这里是叶节点, 所以不需要转移子节点? 
 }
 
-int main()
+brother->_n += size;
+
+// 多减一个一是因为要把mid交给父节点
+// 在这里是parent的parent
+parent->_n -= (size+1);
+```
+
+接下来一个很关键的地方来了, 现在我们要把一个关键字`mid`和它右边的子节点`brother`放进父节点, 这相当于指定一个节点, 往里面插入一个关键字和对应的子节点, 所以我们需要修正一下`_insert`的功能, 指定一个节点, 向其中插入关键字和子节点, 对于叶节点来说, 子节点被缺省为空节点., 这样一转化之后, 就相当于要走循环了.
+
+下面我们就来写一下`_insert`
+
+```cpp
+void _inser(key, node, sub)
 {
-    cout <<"hello BTree"<<endl;
-    TestBTree();
-    return 0;
+    // 找到应该插入的位置
+    idx = node->search(key);
+    
+    // 如果等于n, 说明就是尾插
+    // 否则需要挪动数据
+    if(idx == node->_n)
+    {
+        // 尾插被转化成向idx位置插入
+    }
+    else
+    {
+        // 这个node可不一定是叶节点, 所以需要关键字
+        // 子节点都挪动
+       	for(ssize_t i = node->_n; i > idx; --i)
+        {
+            swap(node->_keys[i], node->_keys[i-1]);
+            swap(node->subs[i+1], node->_subs[i]);
+        }
+    }
+    
+    node->_keys[idx] = key;
+    node->_subs[idx+1] = sub;
+    node->_n++;
+    
+    // 不要忘了让子节点回指父节点
+    if(sub)
+        sub->_parent = node;
 }
 ```
 
-最开始, 很简单, 因为压根没有根节点, 所以直接创建一个节点, 把关键字扔进去就行.
+在下一轮循环中, 就是向父节点插入关键字`[mid]`和子节点`brother`, 需要注意的是, 由于现在`parent`已经不是叶节点了, 所以就像是上面的问号一样, 你也需要把`parent`的子节点进行挪动
 
-![image-20250519165345466](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519165345624.png)
+```cpp
+bool insert(key)
+{
+    if(_root == nullptr)
+    {
+        // .......
+    }
 
-![image-20250519165411376](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519165411524.png)
+    // 找叶节点
+    group = find(key);
 
-接下来就不好写了, 那么首先, 由于新关键字都插入叶节点, 所以先要找到叶节点.
+    // 已经存在返回false
+    if(group.second >= 0)
+        return false;
 
-31234
+    // 每轮循环中要向其插入内容父节点
+    Node* parent = group.first;
+
+    // 插入的关键字
+    K CirKey = key;
+    // 插入的子节点
+    Node* Sub = nullptr;
+
+    while(/*...*/)
+    {
+        _insert(key, parent);
+
+        if(parent->_n != M)
+            return true;
+
+        Node* brother = new Node();
+
+        size_t mid = parent->_n / 2;
+
+        // 将`[mid+1, M-1]`的区域转交给兄弟节点
+        size_t size = 0;
+        for(size_t i = mid + 1; i < M; ++i)
+        {
+            // 交换一下调试的效果更好
+            swap(parent->_keys[i], brother->_keys[size]);
+            // 由于这里是叶节点, 所以不需要转移子节点? 
+            swap(parent->_subs[i], brother->_subs[size++])
+        }
+        // 每个关键字配两个子节点
+        swap(parent->_subs[M], brother->_subs[size])
+
+        brother->_n += size;
+
+        // 多减一个一是因为要把mid交给父节点
+        // 在这里是parent的parent
+        parent->_n -= (size+1);   
+        
+        // 把问题转化成向父节点插入一个关键字和子节点
+        CirKey = parent->_keys[mid];
+        Sub = brother;
+        parent->_keys[mid] = K();
+        parent = parent->_parent;
+    }
+}
+```
+
+下面我们看一下循环条件, 当`parent`为空时, 意味着上一轮节点是根节点, 所以此时就要构建新的根节点, 将上一轮的两个节点和`mid`插入进来
+
+```cpp
+bool insert(key)
+{
+    //....
+
+    Node* prev = nullptr;
+    while(parent)
+    {
+        // ...
+
+        // 把问题转化成向父节点插入一个关键字和子节点
+        CirKey = parent->_keys[mid];
+        Sun = brother;
+        parent->_keys[mid] = K();
+        prev = parent;
+        parent = parent->_parent;
+    }
+
+    _root = new Node();
+    _root->_keys[0] = CirKey;
+    _root->_subs[0] = prev;
+    _root->_subs[1] = brother;
+    _root->_n = 1;
+
+    prev->_parent = _root;
+    Sub->_parent = _root;
+    
+    return true;
+}
+```
+
+下面我们就来调试一下
+
+第一个元素, 35
+
+![image-20250522162646083](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522162646302.png)
+
+![image-20250522162719120](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522162719318.png)
+
+第二个元素 139
+
+![image-20250522162810293](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522162810574.png)
+
+直接插入
+
+![image-20250522162909713](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522162909974.png)
+
+接下来是第三个元素75, 满了, 触发分裂行为
+
+![image-20250522163014428](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522163014741.png)
+
+139被移交给了兄弟节点
+
+![image-20250522163127261](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522163127517.png)
+
+出了一点小问题, 不过不是我们的问题, [1]位置现在应该已经变为零了, 但code的图形化界面没有刷新出来
+
+![image-20250522163700585](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522163700833.png)
+
+我们看到现在它已经刷新出来了
+
+![image-20250522163838620](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522163838896.png)
+
+错的又出点小问题, 重新开了一轮
+
+![image-20250522164211552](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164211786.png)
+
+现在就出循环, 创建新的根节点
+
+![image-20250522164300434](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164300695.png)
+
+![image-20250522164332487](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164332733.png)
+
+![image-20250522164409223](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164409455.png)
+
+现在我们这个B树已经变成这样了
+
+![image-20250519140140867](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519140140928.png)
+
+接下来是下一个元素49
+
+![image-20250522164714548](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164714825.png)
+
+直接插入
+
+![image-20250522164803898](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164804096.png)
+
+接下来是145
+
+![image-20250522164849871](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164850143.png)
+
+也是直接插入
+
+![image-20250522164921255](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164921573.png)
+
+下一个是36
+
+![image-20250522164951672](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522164951942.png)
+
+触发了分裂行为
+
+![image-20250522165021400](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165021674.png)
+
+![image-20250522165119186](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165119464.png)
+
+![image-20250522165149635](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165149905.png)
+
+![image-20250522165221227](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165221476.png)
+
+现在就是这种情况
+
+![image-20250519141836939](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519141837004.png)
+
+也是直接插入
+
+![image-20250522165351292](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165351596.png)
+
+接下来是101
+
+![image-20250522165445884](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165446159.png)
+
+满了, 也要分裂
+
+![image-20250522165528285](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165528534.png)
+
+![image-20250522165615777](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522165616030.png)
+
+又出了一些小情况, 再来一轮
+
+![image-20250522170219096](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170219333.png)
+
+现在就是这种情况, 要把139插入到上面
+
+![image-20250519142522200](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142522254.png)
+
+![image-20250522170415379](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170415668.png)
+
+再次触发了分裂机制
+
+![image-20250522170455686](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170455962.png)
+
+![image-20250519142822393](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142822457.png)
+
+![image-20250522170659617](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170659940.png)
+
+![image-20250522170725635](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170725914.png)
+
+![image-20250519142926070](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250519142926134.png)
+
+![image-20250522170852193](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522170852425.png)
+
+![image-20250522171009067](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522171009367.png)
+
