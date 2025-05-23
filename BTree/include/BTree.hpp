@@ -1,25 +1,27 @@
 #pragma once
-#include <stddef.h>     // size_t
-#include <algorithm>    // std::fill
-#include <utility>      // std::pair
-#include <iterator>     // std::begin(arr), std::end(arr)
+#include <stddef.h>  // size_t
 
+#include <algorithm>  // std::fill
+#include <iostream>   // std::cout
+#include <iterator>   // std::begin(arr), std::end(arr)
+#include <utility>    // std::pair
 
 template <class K, size_t M>
 struct BTreeNode
 {
-    private:
+   private:
     typedef BTreeNode<K, M> self;
 
-    public:
-    size_t _n;          // 记录关键字的个数
+   public:
+    size_t _n;  // 记录关键字的个数
 
-    K _keys[M];         // 关键字数组
-    self* _subs[M + 1]; // 子节点指针数组
+    K _keys[M];          // 关键字数组
+    self* _subs[M + 1];  // 子节点指针数组
 
     self* _parent;
 
-    BTreeNode(){
+    BTreeNode()
+    {
         // 初始化, 数据清空
         _n = 0;
         _parent = nullptr;
@@ -31,15 +33,16 @@ struct BTreeNode
     // 否则, 返回-1
     std::pair<bool, size_t> search(const K& target)
     {
-        if(_n == 0) return {false, 0};
+        if (_n == 0)
+            return {false, 0};
 
         ssize_t left = 0, right = _n - 1;
-        while(left <= right)
+        while (left <= right)
         {
             ssize_t mid = left + (right - left) / 2;
-            if(_keys[mid] < target)
+            if (_keys[mid] < target)
                 left = mid + 1;
-            else if(_keys[mid] > target)
+            else if (_keys[mid] > target)
                 right = mid - 1;
             else
                 return {true, mid};
@@ -59,30 +62,43 @@ class BTree
     {
         auto [temp, idx] = node->search(key);
 
-        if(idx >= node->_n)
+        if (idx >= node->_n)
         {
             // 说明直接尾插即可
         }
         else
         {
             // 说明需要挪动数据
-            for(size_t i = node->_n; i > idx; --i)
+            for (size_t i = node->_n; i > idx; --i)
             {
-                std::swap(node->_keys[i], node->_keys[i-1]);
-                std::swap(node->_subs[i+1], node->_subs[i]);
+                std::swap(node->_keys[i], node->_keys[i - 1]);
+                std::swap(node->_subs[i + 1], node->_subs[i]);
             }
         }
 
         node->_keys[idx] = key;
-        node->_subs[idx+1] = sub;
+        node->_subs[idx + 1] = sub;
         node->_n++;
 
-        if(sub != nullptr)
+        if (sub != nullptr)
             sub->_parent = node;
     }
 
-    public:
+    void _inorder(Node* root)
+    {
+        if (root == nullptr)
+            return;
 
+        size_t n = root->_n;
+        for (size_t i = 0; i < n; ++i)
+        {
+            _inorder(root->_subs[i]);
+            std::cout << root->_keys[i] << " ";
+        }
+        _inorder(root->_subs[n]);
+    }
+
+   public:
     // 定义find, 如果关键字已经存在,
     // 返回对应的节点及下标索引
     // 不存在, 返回-1和叶节点
@@ -92,10 +108,10 @@ class BTree
         Node* prev = nullptr;
 
         ssize_t idx = 0;
-        while(curr != nullptr)
+        while (curr != nullptr)
         {
-            auto group = _root->search(key);
-            if(group.first == true)
+            auto group = curr->search(key);
+            if (group.first == true)
                 return {curr, group.second};
 
             idx = group.second;
@@ -109,7 +125,7 @@ class BTree
 
     bool insert(const K& key)
     {
-        if(_root == nullptr)
+        if (_root == nullptr)
         {
             Node* node = new Node();
             node->_keys[0] = key;
@@ -121,51 +137,57 @@ class BTree
         auto group = find(key);
 
         // 已经存在了, 当前禁止关键字重复
-        if(group.second >= 0)
+        if (group.second >= 0)
             return false;
 
         // 不存在, 找到叶节点
-        Node* parent = group.first; // 空节点的父节点
+        Node* parent = group.first;  // 空节点的父节点
 
         K CirKey = key;
         Node* Sub = nullptr;
 
         Node* prev = nullptr;
-        while(parent != nullptr)
+        while (parent != nullptr)
         {
             _insert(CirKey, parent, Sub);
-            if(parent->_n != M) return true;
+            if (parent->_n < M)
+                return true;  // 不需要分裂，直接插入成功
 
-            // 满了, 开始分裂.
+            // 需要分裂当前节点
+            size_t mid = parent->_n / 2;
+            K upKey = parent->_keys[mid];  // 上升的中间 key
+
             Node* brother = new Node();
 
-            size_t mid = parent->_n / 2;
-
-            // 将[mid+1, M-1]部分转交给兄弟节点
-            size_t size = 0;
-            for(size_t i = mid + 1; i < M; ++i)
+            // 将右半部分 [mid+1, M-1] 搬到 brother 中
+            size_t j = 0;
+            for (size_t i = mid + 1; i < M; ++i, ++j)
             {
-                // 交换一下调试效果更明显
-                std::swap(brother->_keys[size], parent->_keys[i]);
-                std::swap(brother->_subs[size++], parent->_subs[i]);
+                brother->_keys[j] = parent->_keys[i];
+                parent->_keys[i] = K();  // 清理原节点
+
+                brother->_subs[j] = parent->_subs[i];
+                if (brother->_subs[j])
+                    brother->_subs[j]->_parent = brother;
+
+                parent->_subs[i] = nullptr;
             }
 
-            std::swap(brother->_subs[size], parent->_subs[M]);
+            // 最后一个子节点
+            brother->_subs[j] = parent->_subs[M];
+            if (brother->_subs[j])
+                brother->_subs[j]->_parent = brother;
+            parent->_subs[M] = nullptr;
 
-            brother->_n = size;
+            brother->_n = j;
+            parent->_n = mid;  // 原节点只保留前半部分
 
-            // size转交给brother, 1转交给父节点
-            parent->_n -= (size + 1);
-
-            // 把brother与父节点的连接转化成在父节点中插入一个key和节点
-            CirKey = parent->_keys[mid];
+            // 更新循环变量
+            CirKey = upKey;
             Sub = brother;
-            parent->_keys[mid] = K();
             prev = parent;
             parent = parent->_parent;
-
         }
-
         // 分裂到了根节点
         _root = new Node();
         _root->_keys[0] = CirKey;
@@ -180,6 +202,12 @@ class BTree
         return true;
     }
 
-    private:
+    void inorder()
+    {
+        _inorder(_root);
+        std::cout << std::endl;
+    }
+
+   private:
     Node* _root = nullptr;
 };
