@@ -320,7 +320,7 @@ std::pair<Node*, ssize_t> find(const K& key)
     ssize_t idx = 0;
     while(curr != nullptr)
     {
-        auto group = _root->search(key);
+        auto group = curr->search(key);
         if(group.first == true)
             return {curr, group.second};
 
@@ -494,16 +494,19 @@ bool insert(key)
             swap(parent->_keys[i], brother->_keys[size]);
             // 由于这里是叶节点, 所以不需要转移子节点? 
             swap(parent->_subs[i], brother->_subs[size++])
+
+                /*! 后续发现这里有问题, 那就是没有更新转移节点的_parent 在中序遍历之后有insert的完整代码 
+                后面的调试代码的截图用的也是这段错代码, 不要看   */
         }
         // 每个关键字配两个子节点
         swap(parent->_subs[M], brother->_subs[size])
 
-        brother->_n += size;
+            brother->_n += size;
 
         // 多减一个一是因为要把mid交给父节点
         // 在这里是parent的parent
         parent->_n -= (size+1);   
-        
+
         // 把问题转化成向父节点插入一个关键字和子节点
         CirKey = parent->_keys[mid];
         Sub = brother;
@@ -668,3 +671,279 @@ bool insert(key)
 
 ![image-20250522171009067](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250522171009367.png)
 
+---------
+
+对于 B 树的删除，我们这里就不详细展开了，说实话我自己也还没实现过，精力也不够。不过大致思想是这样的：
+
+删除一个非叶子节点的关键字时，我们不直接删它，而是从它的子节点中“借”一个关键字来替代它。一般是取左子树的最大值（前驱）或右子树的最小值（后继），把这个值提上来，把原本的问题转化成删除子节点中的关键字。
+
+这样一层层往下推进，最终问题都会变成删除一个**叶子节点**中的关键字。如果该叶子节点的关键字够多，那直接删就好。如果删完之后关键字数量不够了，就要“借”关键字 —— 从左右兄弟节点中借一个，通过父节点“中转”来维护平衡。
+
+借不到怎么办？那就只能合并节点了：把当前节点、它的兄弟节点，还有父节点中的一个关键字合并成一个新节点。这个合并操作可能导致父节点关键字数量不足，于是就要递归地往上处理，直到整棵树重新平衡。
+
+-------
+
+最后我们简单写一下B树的中序遍历 大致思想还是先左后右
+
+![image-20250523201317904](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523201318082.png)
+
+```cpp
+void _inorder(Node* root)
+{
+    if(root == nullptr)
+        return;
+
+    size_t n = root->_n;
+    for(size_t i = 0; i < n; ++i)
+    {
+        _inorder(root->_subs[i]);
+        std::cout<<root->_keys[i]<<" ";
+    }
+    _inorder(root->_subs[n]);
+}
+
+void inorder()
+{
+    _inorder(_root);
+}
+```
+
+```cpp
+[whisper@starry-sky build]$ ./BTree 
+hello BTree
+35 36 49 75 101 139 145 
+```
+
+刚刚打印的时候发现了一些问题, 在前面已经备注过了, 在此我把`insert`直接贴在这里
+
+```cpp
+bool insert(const K& key)
+{
+    if (_root == nullptr)
+    {
+        Node* node = new Node();
+        node->_keys[0] = key;
+        ++node->_n;
+        _root = node;
+        return true;
+    }
+
+    auto group = find(key);
+
+    // 已经存在了, 当前禁止关键字重复
+    if (group.second >= 0)
+        return false;
+
+    // 不存在, 找到叶节点
+    Node* parent = group.first;  // 空节点的父节点
+
+    K CirKey = key;
+    Node* Sub = nullptr;
+
+    Node* prev = nullptr;
+    while (parent != nullptr)
+    {
+        _insert(CirKey, parent, Sub);
+        if (parent->_n < M)
+            return true;  // 不需要分裂，直接插入成功
+
+        // 需要分裂当前节点
+        size_t mid = parent->_n / 2;
+        K upKey = parent->_keys[mid];  // 上升的中间 key
+
+        Node* brother = new Node();
+
+        // 将右半部分 [mid+1, M-1] 搬到 brother 中
+        size_t j = 0;
+        for (size_t i = mid + 1; i < M; ++i, ++j)
+        {
+            brother->_keys[j] = parent->_keys[i];
+            parent->_keys[i] = K();  // 清理原节点
+
+            brother->_subs[j] = parent->_subs[i];
+            if (brother->_subs[j])
+                brother->_subs[j]->_parent = brother;
+
+            parent->_subs[i] = nullptr;
+        }
+
+        // 最后一个子节点
+        brother->_subs[j] = parent->_subs[M];
+        if (brother->_subs[j])
+            brother->_subs[j]->_parent = brother;
+        parent->_subs[M] = nullptr;
+
+        brother->_n = j;
+        parent->_n = mid;  // 原节点只保留前半部分
+
+        // 更新循环变量
+        CirKey = upKey;
+        Sub = brother;
+        prev = parent;
+        parent = parent->_parent;
+    }
+    // 分裂到了根节点
+    _root = new Node();
+    _root->_keys[0] = CirKey;
+    _root->_subs[0] = prev;
+    _root->_subs[1] = Sub;
+    _root->_n = 1;
+
+    // 子节点建立回指指针
+    _root->_subs[0]->_parent = _root;
+    _root->_subs[1]->_parent = _root;
+
+    return true;
+}
+
+```
+
+```cpp
+typedef BTree<int, 3> BT;
+
+// void TestBTree()
+// {
+//     int arr[] = {35, 139, 75, 49, 145, 36, 101};
+
+//     BT o;
+
+//     for(auto e : arr)
+//     {
+//         o.insert(e);
+//     }
+//     o.inorder();
+// }
+
+typedef BTree<int, 3> BT;
+
+void TestBTree()
+{
+    auto RunTest = [](const std::vector<int>& arr, const std::string& name)
+    {
+        std::cout << "=== " << name << " ===\n";
+        BT tree;
+        for (auto e : arr)
+            tree.insert(e);
+        tree.inorder();
+        std::cout << "\n\n";
+    };
+
+    RunTest({10, 20}, "Test Case 1: Minimal insert");
+    RunTest({10, 20, 30, 40}, "Test Case 2: Trigger root split");
+    RunTest({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, "Test Case 3: Ordered insert");
+    RunTest({100, 90, 80, 70, 60, 50, 40, 30, 20, 10}, "Test Case 4: Reverse insert");
+    RunTest({50, 20, 80, 10, 30, 60, 90, 25, 35, 70, 100}, "Test Case 5: Interleaved insert");
+
+    std::vector<int> largeCase;
+    for (int i = 1; i <= 50; ++i)
+        largeCase.push_back(i);
+    RunTest(largeCase, "Test Case 6: Bulk insert (1~50)");
+}
+
+int main()
+{
+    cout <<"hello BTree"<<endl;
+    TestBTree();
+    return 0;
+}
+```
+
+```shell
+[whisper@starry-sky build]$ ./BTree 
+hello BTree
+=== Test Case 1: Minimal insert ===
+10 20 
+
+
+=== Test Case 2: Trigger root split ===
+10 20 30 40 
+
+
+=== Test Case 3: Ordered insert ===
+1 2 3 4 5 6 7 8 9 10 
+
+
+=== Test Case 4: Reverse insert ===
+10 20 30 40 50 60 70 80 90 100 
+
+
+=== Test Case 5: Interleaved insert ===
+10 20 25 30 35 50 60 70 80 90 100 
+
+
+=== Test Case 6: Bulk insert (1~50) ===
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 
+
+[whisper@starry-sky build]$ 
+```
+
+最后我们稍微算一下二叉树的效率.
+
+首先我们要把元素个数`N`算出来, 我们不严谨的算一下, 严格来说, 对于分支因子为`M`的B树来说, 其最满的时候, 第一层应该是`M-1`个关键字, 但我们这里就看成`M`了, 第二层应该是`M * (M-1)`个关键字, 但我们就当成`M*M`了...
+
+这样的话, 对于一个深度为$h$的B树来说, 就有其关键字个数$N$的表达式
+$$
+N = M + M^2 + M^3 + ... + M^h;
+$$
+
+$$
+MN = M^2 + M^3 + ... + M^h + M ^{h+1}
+$$
+
+$$
+MN-N = M^{h+1}-M
+$$
+
+$$
+MN -N + M= M^{h+1}
+$$
+
+$$
+
+$$
+
+## B树的变形及应用
+
+很多人觉得B树的规则过于复杂, 实用性不是很高, 所以将其简化, 就有了B+树.
+
+![image-20250523211103497](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523211103886.png)
+
+B树还是搜索树的样子, B+树就已经不太像了, B+取消了原先B树节点中最左边的子节点, 比如在上图中, `[5, 10, 20]`的`p1`指向的数据都是大于等于5, 而又小于10的数据, 这样, B+树的子节点和分支节点中的关键字就是明确的一一对应关系
+
+B+树已经分层了, 叶节点才是真正存储数据的节点, 分支节点仅仅是找到叶节点的路由判断依据, 也就是说, B+树已经出现了路由层和数据层的分化, 分支节点中存储的都是对应子节点的最小值, 这样的话, 由于路由层已经单纯起路由作用, 所以其内部已经不再含有关键字和主体数据的映射关系, 这样大大减少非叶节点的数据量, 从而能将其尽可能多的从磁盘缓存到内存中, 从而便于快速路由, 因此, B+树是目前最常用的具体B树.
+
+另外为了方便地进行相邻叶节点的操作, 叶节点之间使用直接链接到了一起., 也就是上图中的`Q`.
+
+下面, 我们以`{53, 139, 75, 49, 145, 36, 101}`为示例, 简要模拟一下B+树的分裂过程, M依旧选为3.
+
+最开始, B+树就是空树, 没什么好说的
+
+一旦有数据插入, B+树就要形成路由层好数据层两个部分, 非叶节点承担路由功能, 叶节点真正存储数据.
+
+![image-20250523214007413](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214007556.png)
+
+有元素, 还是先放叶节点里, 放不下了再新建一个叶节点
+
+![image-20250523214033316](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214033466.png)
+
+![image-20250523214054207](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214054345.png)
+
+当遇到一个比索引更小的元素, 索引便需要进行更新
+
+![image-20250523214159868](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214200038.png)
+
+现在, 叶节点已经满了, 需要进行分裂, 我们把叶节点的后半部分拿到一个新的叶节点上, 并把其中开头的, 实际上就是最小的关键字放到路由层
+
+![image-20250523214502021](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214502192.png)
+
+当然, 叶节点还有一个指针再进行连接, 不过这里没画.
+
+![image-20250523214727521](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214727680.png)
+
+![image-20250523214751795](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214751967.png)
+
+![image-20250523214820491](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214820670.png)
+
+![image-20250523214903918](https://md-wind.oss-cn-nanjing.aliyuncs.com/md/20250523214904127.png)
+
+叶节点与叶节点之间是用指针以链表形式进行管理的, 叶节点内部大多采用的是数组, 但也可能用链表
